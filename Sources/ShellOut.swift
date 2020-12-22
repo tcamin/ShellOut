@@ -7,6 +7,18 @@
 import Foundation
 import Dispatch
 
+public protocol Handle {
+    var shouldCloseFileOnExit: Bool { get }
+    func write(_ data: Data)
+    func closeFile()
+}
+
+extension FileHandle: Handle {
+    public var shouldCloseFileOnExit: Bool {
+        return !(self === FileHandle.standardOutput || self === FileHandle.standardError || self === FileHandle.standardInput)
+    }
+}
+
 // MARK: - API
 
 /**
@@ -32,8 +44,8 @@ import Dispatch
     arguments: [String] = [],
     at path: String = ".",
     process: Process = .init(),
-    outputHandle: FileHandle? = nil,
-    errorHandle: FileHandle? = nil
+    outputHandle: Handle? = nil,
+    errorHandle: Handle? = nil
 ) throws -> String {
     let command = "cd \(path.escapingSpaces) && \(command) \(arguments.joined(separator: " "))"
 
@@ -65,8 +77,8 @@ import Dispatch
     to commands: [String],
     at path: String = ".",
     process: Process = .init(),
-    outputHandle: FileHandle? = nil,
-    errorHandle: FileHandle? = nil
+    outputHandle: Handle? = nil,
+    errorHandle: Handle? = nil
 ) throws -> String {
     let command = commands.joined(separator: " && ")
 
@@ -100,8 +112,8 @@ import Dispatch
     to command: ShellOutCommand,
     at path: String = ".",
     process: Process = .init(),
-    outputHandle: FileHandle? = nil,
-    errorHandle: FileHandle? = nil
+    outputHandle: Handle? = nil,
+    errorHandle: Handle? = nil
 ) throws -> String {
     return try shellOut(
         to: command.string,
@@ -379,7 +391,7 @@ extension ShellOutError: LocalizedError {
 // MARK: - Private
 
 private extension Process {
-    @discardableResult func launchBash(with command: String, outputHandle: FileHandle? = nil, errorHandle: FileHandle? = nil) throws -> String {
+    @discardableResult func launchBash(with command: String, outputHandle: Handle? = nil, errorHandle: Handle? = nil) throws -> String {
         launchPath = "/bin/bash"
         arguments = ["-c", command]
 
@@ -427,11 +439,11 @@ private extension Process {
 
         waitUntilExit()
 
-        if let handle = outputHandle, !handle.isStandard {
+        if let handle = outputHandle, handle.shouldCloseFileOnExit {
             handle.closeFile()
         }
 
-        if let handle = errorHandle, !handle.isStandard {
+        if let handle = errorHandle, handle.shouldCloseFileOnExit {
             handle.closeFile()
         }
 
@@ -453,14 +465,6 @@ private extension Process {
 
             return outputData.shellOutput()
         }
-    }
-}
-
-private extension FileHandle {
-    var isStandard: Bool {
-        return self === FileHandle.standardOutput ||
-            self === FileHandle.standardError ||
-            self === FileHandle.standardInput
     }
 }
 
